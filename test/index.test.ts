@@ -16,6 +16,8 @@ describe("XaiOAuthPlugin", () => {
     expect(typeof XaiOAuthPlugin).toBe("function")
     expect(plugin.auth?.provider).toBe("xai")
     expect(plugin.provider).toBeUndefined()
+    expect(typeof plugin.config).toBe("function")
+    expect(typeof plugin["chat.params"]).toBe("function")
     expect(Object.keys(plugin.tool || {}).sort()).toEqual([
       "xai_generate_text",
       "xai_image_generate",
@@ -24,6 +26,48 @@ describe("XaiOAuthPlugin", () => {
       "xai_web_search",
       "xai_x_search",
     ])
+  })
+
+
+  test("adds Grok thinking metadata to the built-in xAI provider config", async () => {
+    const plugin = await XaiOAuthPlugin(pluginCtx())
+    const config = {} as Record<string, unknown>
+
+    await plugin.config!(config as never)
+
+    const provider = config.provider as Record<string, { models: Record<string, Record<string, unknown>> }>
+    const grok43 = provider.xai.models["grok-4.3"]
+    const grok43Variants = grok43.variants as Record<string, { reasoningEffort: string }>
+
+    expect(grok43.reasoning).toBe(true)
+    expect(grok43Variants.high.reasoningEffort).toBe("high")
+    expect(provider.xai.models["grok-4.20-reasoning"].reasoning).toBe(true)
+  })
+
+  test("maps xAI Grok 4.3 variants to reasoning effort request options", async () => {
+    const plugin = await XaiOAuthPlugin(pluginCtx())
+    const output = { options: {} } as { options: Record<string, unknown> }
+
+    await plugin["chat.params"]!(
+      { model: { providerID: "xai", modelID: "grok-4.3" }, provider: { id: "xai" }, message: { variant: "xhigh" } } as never,
+      output as never,
+    )
+
+    expect(output.options.reasoningEffort).toBe("high")
+    expect(output.options.reasoning_effort).toBe("high")
+  })
+
+  test("does not send unsupported reasoning_effort to Grok 4.20 reasoning", async () => {
+    const plugin = await XaiOAuthPlugin(pluginCtx())
+    const output = { options: {} } as { options: Record<string, unknown> }
+
+    await plugin["chat.params"]!(
+      { model: { providerID: "xai", modelID: "grok-4.20-reasoning" }, provider: { id: "xai" }, message: { variant: "high" } } as never,
+      output as never,
+    )
+
+    expect(output.options.reasoningEffort).toBeUndefined()
+    expect(output.options.reasoning_effort).toBeUndefined()
   })
 
   test("status tool reports missing credentials without throwing", async () => {

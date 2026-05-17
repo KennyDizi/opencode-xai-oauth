@@ -1,13 +1,118 @@
-import type { Plugin } from "@opencode-ai/plugin"
+import type { Config, Plugin } from "@opencode-ai/plugin"
 import { tool } from "@opencode-ai/plugin"
 import { beginOAuth, readStoredAuth, resolveXaiCredentials, xaiImageGenerate, xaiResponses, xaiTts, XAI_BASE_URL } from "./xai"
 
 const MAX_HANDLES = 10
+const GROK_REASONING_EFFORTS = ["low", "medium", "high"] as const
+
+type GrokReasoningEffort = (typeof GROK_REASONING_EFFORTS)[number]
+
+type MutableConfig = Config & {
+  provider?: Record<string, {
+    models?: Record<string, Record<string, unknown>>
+    options?: Record<string, unknown>
+  }>
+}
 
 function handles(input?: string[]) {
   const cleaned = (input || []).map((h) => String(h || "").trim().replace(/^@+/, "")).filter(Boolean)
   if (cleaned.length > MAX_HANDLES) throw new Error(`supports at most ${MAX_HANDLES} handles`)
   return cleaned
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function isGrokModel(modelID: string | undefined) {
+  return typeof modelID === "string" && modelID.toLowerCase().includes("grok")
+}
+
+function normalizeGrokReasoningEffort(value: unknown): GrokReasoningEffort | undefined {
+  if (typeof value !== "string") return undefined
+  const normalized = value.toLowerCase()
+  if (normalized === "xhigh" || normalized === "max") return "high"
+  return GROK_REASONING_EFFORTS.includes(normalized as GrokReasoningEffort) ? normalized as GrokReasoningEffort : undefined
+}
+
+function applyGrokThinkingConfig(config: MutableConfig) {
+  config.provider ??= {}
+  const xai = config.provider.xai ??= {}
+  xai.models ??= {}
+
+  const upsertModel = (modelID: string, model: Record<string, unknown>) => {
+    const current = xai.models?.[modelID] || {}
+    xai.models![modelID] = {
+      ...current,
+      ...model,
+      variants: {
+        ...(isRecord(current.variants) ? current.variants : {}),
+        low: { reasoningEffort: "low" },
+        medium: { reasoningEffort: "medium" },
+        high: { reasoningEffort: "high" },
+      },
+      options: {
+        ...(isRecord(current.options) ? current.options : {}),
+        ...(isRecord(model.options) ? model.options : {}),
+      },
+    }
+  }
+
+  upsertModel("grok-4.3", {
+    name: "Grok 4.3",
+    family: "grok",
+    reasoning: true,
+    temperature: true,
+    tool_call: true,
+    attachment: true,
+    limit: { context: 1_000_000, output: 131_072 },
+    modalities: { input: ["text", "image"], output: ["text"] },
+    options: { reasoningEffort: "low" },
+  })
+
+  upsertModel("grok-4.20-reasoning", {
+    name: "Grok 4.20 Reasoning",
+    family: "grok",
+    reasoning: true,
+    temperature: true,
+    tool_call: true,
+    attachment: true,
+    limit: { context: 1_000_000, output: 131_072 },
+    modalities: { input: ["text", "image"], output: ["text"] },
+  })
+}
+
+function inputModelID(input: unknown): string | undefined {
+  if (!isRecord(input) || !isRecord(input.model)) return undefined
+  return typeof input.model.modelID === "string" ? input.model.modelID : typeof input.model.id === "string" ? input.model.id : undefined
+}
+
+function inputProviderID(input: unknown): string | undefined {
+  if (!isRecord(input)) return undefined
+  if (isRecord(input.model) && typeof input.model.providerID === "string") return input.model.providerID
+  if (isRecord(input.provider) && typeof input.provider.id === "string") return input.provider.id
+  return undefined
+}
+
+function inputVariant(input: unknown): string | undefined {
+  if (!isRecord(input) || !isRecord(input.message)) return undefined
+  return typeof input.message.variant === "string" ? input.message.variant : undefined
+}
+
+function applyGrokReasoningParams(input: unknown, output: unknown) {
+  if (!isRecord(output)) return
+  if (inputProviderID(input) !== "xai") return
+  const modelID = inputModelID(input)
+  if (!isGrokModel(modelID)) return
+  if (modelID !== "grok-4.3") return
+
+  const options = isRecord(output.options) ? output.options : {}
+  output.options = options
+  const effort = normalizeGrokReasoningEffort(options.reasoningEffort) ?? normalizeGrokReasoningEffort(inputVariant(input))
+  if (!effort) return
+
+  options.reasoningEffort = effort
+  options.reasoning_effort = effort
 }
 
 export const XaiOAuthPlugin: Plugin = async (ctx) => {
@@ -52,8 +157,12 @@ export const XaiOAuthPlugin: Plugin = async (ctx) => {
         },
       ],
     },
-    // Do not override OpenCode's built-in xAI provider/model adapter.
-    // This plugin only attaches OAuth/API-key auth and custom xAI tools to provider id "xai".
+    config: async (config) => {
+      applyGrokThinkingConfig(config as MutableConfig)
+    },
+    "chat.params": async (input, output) => {
+      applyGrokReasoningParams(input, output)
+    },
     tool: {
       xai_status: tool({
         description: "Show whether xAI OAuth/API-key credentials are available for this OpenCode plugin.",
