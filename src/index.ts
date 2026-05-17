@@ -4,8 +4,10 @@ import { beginOAuth, readStoredAuth, resolveXaiCredentials, xaiImageGenerate, xa
 
 const MAX_HANDLES = 10
 const GROK_REASONING_EFFORTS = ["low", "medium", "high"] as const
+const GROK_REASONING_VARIANTS = ["low", "medium", "high", "xhigh", "max"] as const
 
 type GrokReasoningEffort = (typeof GROK_REASONING_EFFORTS)[number]
+type GrokReasoningVariant = (typeof GROK_REASONING_VARIANTS)[number]
 
 type MutableConfig = Config & {
   provider?: Record<string, {
@@ -35,6 +37,12 @@ function normalizeGrokReasoningEffort(value: unknown): GrokReasoningEffort | und
   return GROK_REASONING_EFFORTS.includes(normalized as GrokReasoningEffort) ? normalized as GrokReasoningEffort : undefined
 }
 
+function grokReasoningVariantOptions() {
+  return Object.fromEntries(
+    GROK_REASONING_VARIANTS.map((variant) => [variant, { reasoningEffort: normalizeGrokReasoningEffort(variant) }]),
+  ) as Record<GrokReasoningVariant, { reasoningEffort: GrokReasoningEffort }>
+}
+
 function applyGrokThinkingConfig(config: MutableConfig) {
   config.provider ??= {}
   const xai = config.provider.xai ??= {}
@@ -47,9 +55,7 @@ function applyGrokThinkingConfig(config: MutableConfig) {
       ...model,
       variants: {
         ...(isRecord(current.variants) ? current.variants : {}),
-        low: { reasoningEffort: "low" },
-        medium: { reasoningEffort: "medium" },
-        high: { reasoningEffort: "high" },
+        ...grokReasoningVariantOptions(),
       },
       options: {
         ...(isRecord(current.options) ? current.options : {}),
