@@ -16,7 +16,7 @@ This project does not provide legal advice and does not guarantee that any parti
 
 - `auth` hook attaches OAuth/API-key login methods to the existing OpenCode `xai` provider, so `opencode auth login` uses the normal **xAI** provider instead of creating a separate `xai-oauth` provider.
 - Does **not** override OpenCode's built-in `xai` provider/model adapter; this avoids adapter mismatches such as `responses is not a function`.
-- Adds Grok thinking metadata to the built-in `xai` provider. `grok-4.3` exposes `low`, `medium`, `high`, `xhigh`, and `max` variants; `xhigh` and `max` are mapped down to xAI's supported `high` reasoning effort.
+- Adds Grok thinking metadata to the built-in `xai` provider. `grok-4.3` exposes only xAI-supported reasoning effort variants: `low`, `medium`, and `high`.
 - Marks `grok-4.20-reasoning` as reasoning-capable without sending unsupported `reasoning_effort` request parameters for that model.
 - `shell.env` hook injects `XAI_API_KEY`/`XAI_BASE_URL` into tool shells when credentials are available.
 - Custom OpenCode tools:
@@ -34,7 +34,7 @@ This project does not provide legal advice and does not guarantee that any parti
 | --- | --- | --- |
 | OpenCode auth | OAuth login and API-key fallback for provider `xai` | The plugin attaches to the existing xAI provider. |
 | Grok chat/provider use | Uses OpenCode's built-in xAI adapter | The plugin only patches auth/config/params, not the provider adapter. |
-| Grok thinking variants | `low`, `medium`, `high`, `xhigh`, `max` for `grok-4.3` | `xhigh` and `max` map to `high` because xAI exposes `low`/`medium`/`high`. |
+| Grok thinking variants | `low`, `medium`, `high` for `grok-4.3` | Only xAI-supported reasoning effort values are exposed. |
 | Grok 4.20 reasoning | Model is marked reasoning-capable | `reasoning_effort` is intentionally not sent for `grok-4.20-reasoning`. |
 | Text generation tool | `xai_generate_text` | Uses xAI Responses API. |
 | Web search tool | `xai_web_search` | Uses xAI server-side `web_search`. |
@@ -122,14 +122,13 @@ Endpoint/model names can change on xAI's side; pass explicit `model` arguments i
 
 ## Grok thinking mode
 
-The plugin patches OpenCode config metadata for the existing `xai` provider instead of replacing the provider adapter. For `grok-4.3`, OpenCode variants are mapped as follows. The plugin writes both `reasoningEffort` and `reasoning_effort` into chat params for compatibility with OpenCode/xAI transport paths:
+The plugin patches OpenCode config metadata for the existing `xai` provider instead of replacing the provider adapter. For `grok-4.3`, OpenCode variants are mapped as follows. The plugin intentionally exposes only xAI-supported reasoning effort values, and writes both `reasoningEffort` and `reasoning_effort` into chat params for compatibility with OpenCode/xAI transport paths:
 
 | OpenCode variant | xAI reasoning effort |
 | --- | --- |
 | `low` | `low` |
 | `medium` | `medium` |
 | `high` | `high` |
-| `xhigh` / `max` | `high` |
 
 `grok-4.20-reasoning` is marked as a reasoning model, but the plugin intentionally does not send `reasoning_effort` for it because xAI documents that parameter as unsupported for `grok-4.20`.
 

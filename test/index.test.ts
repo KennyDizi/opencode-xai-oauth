@@ -41,8 +41,8 @@ describe("XaiOAuthPlugin", () => {
 
     expect(grok43.reasoning).toBe(true)
     expect(grok43Variants.high.reasoningEffort).toBe("high")
-    expect(grok43Variants.xhigh.reasoningEffort).toBe("high")
-    expect(grok43Variants.max.reasoningEffort).toBe("high")
+    expect(grok43Variants.xhigh).toBeUndefined()
+    expect(grok43Variants.max).toBeUndefined()
     expect(provider.xai.models["grok-4.20-reasoning"].reasoning).toBe(true)
   })
 
@@ -60,12 +60,12 @@ describe("XaiOAuthPlugin", () => {
     expect(commands["xai-status"].template).toContain("xai_status")
   })
 
-  test("maps xAI Grok 4.3 variants to reasoning effort request options", async () => {
+  test("maps supported xAI Grok 4.3 variants to reasoning effort request options", async () => {
     const plugin = await XaiOAuthPlugin(pluginCtx())
     const output = { options: {} } as { options: Record<string, unknown> }
 
     await plugin["chat.params"]!(
-      { model: { providerID: "xai", modelID: "grok-4.3" }, provider: { id: "xai" }, message: { variant: "xhigh" } } as never,
+      { model: { providerID: "xai", modelID: "grok-4.3" }, provider: { id: "xai" }, message: { variant: "high" } } as never,
       output as never,
     )
 
@@ -73,7 +73,7 @@ describe("XaiOAuthPlugin", () => {
     expect(output.options.reasoning_effort).toBe("high")
   })
 
-  test("maps max Grok 4.3 variant to high reasoning effort request options", async () => {
+  test("does not map unsupported Grok 4.3 variants to request options", async () => {
     const plugin = await XaiOAuthPlugin(pluginCtx())
     const output = { options: {} } as { options: Record<string, unknown> }
 
@@ -82,8 +82,8 @@ describe("XaiOAuthPlugin", () => {
       output as never,
     )
 
-    expect(output.options.reasoningEffort).toBe("high")
-    expect(output.options.reasoning_effort).toBe("high")
+    expect(output.options.reasoningEffort).toBeUndefined()
+    expect(output.options.reasoning_effort).toBeUndefined()
   })
 
   test("does not send unsupported reasoning_effort to Grok 4.20 reasoning", async () => {
