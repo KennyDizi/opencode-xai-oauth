@@ -111,6 +111,40 @@ describe("XaiOAuthPlugin", () => {
     rmSync(dir, { recursive: true, force: true })
     delete process.env.OPENCODE_XAI_OAUTH_AUTH_FILE
   })
+
+  test("auth loader refreshes expired OAuth file instead of returning stale OpenCode access token", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "opencode-xai-oauth-"))
+    process.env.OPENCODE_XAI_OAUTH_AUTH_FILE = join(dir, "auth.json")
+    writeStoredAuth({
+      provider: "xai-oauth",
+      access: "stale-file-access",
+      refresh: "refresh-token",
+      expires: Date.now() - 1_000,
+      tokenEndpoint: "https://auth.x.ai/oauth2/token",
+      tokenType: "Bearer",
+    })
+
+    let refreshBody = ""
+    globalThis.fetch = (async (_url, init) => {
+      refreshBody = String(init?.body || "")
+      return new Response(JSON.stringify({ access_token: "fresh-access", expires_in: 3600, token_type: "Bearer" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
+    }) as typeof fetch
+
+    const plugin = await XaiOAuthPlugin(pluginCtx())
+    const loaded = await plugin.auth!.loader!(
+      async () => ({ type: "oauth", access: "stale-opencode-access", refresh: "refresh-token", expires: Date.now() - 1_000 }),
+      {} as never,
+    )
+
+    expect(refreshBody).toContain("grant_type=refresh_token")
+    expect(loaded.apiKey).toBe("fresh-access")
+    expect(readStoredAuth()?.access).toBe("fresh-access")
+    rmSync(dir, { recursive: true, force: true })
+    delete process.env.OPENCODE_XAI_OAUTH_AUTH_FILE
+  })
 })
 
 describe("xAI auth helpers", () => {

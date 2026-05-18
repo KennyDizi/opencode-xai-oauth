@@ -180,7 +180,14 @@ export const plugin: Plugin = async (ctx) => {
       provider: "xai",
       loader: async (auth) => {
         const current = await auth()
-        if (current.type === "oauth") return { apiKey: current.access, baseURL: XAI_BASE_URL }
+        if (current.type === "oauth") {
+          const stored = readStoredAuth()
+          if (stored?.access) {
+            const refreshed = await resolveXaiCredentials()
+            return { apiKey: refreshed.apiKey, baseURL: refreshed.baseUrl }
+          }
+          return { apiKey: current.access, baseURL: XAI_BASE_URL }
+        }
         if (current.type === "api") return { apiKey: current.key, baseURL: current.metadata?.baseURL || XAI_BASE_URL }
         return {}
       },
